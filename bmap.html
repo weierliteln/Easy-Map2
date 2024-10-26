@@ -1,0 +1,319 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+  <meta charset="utf-8" />
+  <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+  <meta name="viewport" content="initial-scale=1.0, user-scalable=no, width=device-width" />
+  <title>地图</title>
+  <style>
+    html,
+    body,
+    .box {
+      position: relative;
+      top: -13px;
+      width: 100%;
+      height: 100%;
+      margin: 0;
+      padding: 0;
+      /* overflow: hidden; */
+      background-color: #f5f5f5;
+    }
+
+    #container {
+      width: 90%;
+      height: 55%;
+      margin: 10px auto;
+      border: 1px solid #ccc;
+    }
+
+    .loading {
+      width: 100%;
+      height: 40px;
+      line-height: 40px;
+      text-align: center;
+      background-color: #f5f5f5;
+      color: #333;
+    }
+
+    .info-box {
+      width: 100%;
+      height: 45%;
+      overflow: auto;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+
+    .info-box button {
+      width: 60%;
+      margin: 10px auto;
+      height: 40px;
+      line-height: 30px;
+      text-align: center;
+      background-color: #f5f5f5;
+      color: #333;
+      border-radius: 15px;
+      border: 1px solid #ccc;
+    }
+
+    .info-box p {
+      margin: 10px auto;
+      font-size: 14px;
+      text-align: center;
+      width: 60%;
+    }
+
+    .info-box button:hover {
+      background-color: #bababa;
+    }
+
+    #my-panel {
+      height: 45%;
+      width: 90%;
+      margin: 10px auto;
+      border: 1px solid #ccc;
+      overflow: auto;
+      display: none;
+      /* background: #000; */
+      position: absolute;
+      bottom: -10%;
+      right: 5%;
+    }
+
+    .close {
+      position: relative;
+      top: 10px;
+      left: 85%;
+      width: 30px;
+      height: 30px;
+      line-height: 20px;
+      text-align: center;
+      background-color: #f5f5f5;
+      color: #333;
+      border: 1px solid #ccc;
+      z-index: 999;
+      display: none;
+    }
+
+
+    /* .amap-marker-content {
+      white-space: normal !important;
+    } */
+  </style>
+
+</head>
+
+<body>
+  <div class="box">
+    <section class="loading">
+      <span>下拉刷新</span>
+    </section>
+    <div id="container"></div>
+    <button class="close">×</button>
+    <div class="info-box">
+      <p>我的位置：</p>
+      <button class="search_button">查看车位</button>
+      <button>导航到最近的停车场</button>
+      <button>清除导航</button>
+    </div>
+
+    <div id="my-panel">
+    </div>
+  </div>
+</body>
+<script type="text/javascript"
+  src="https://api.map.baidu.com/api?v=1.0&type=webgl&ak=M0VtDYEOfuliX0edwD62fpKdy8O7Pcz4"></script>
+<script src="https://bj.bcebos.com/v1/mapopen-pub-jsapigl/assets/npm/Pako.js"></script>
+<script type="text/javascript">
+
+  // 上拉刷新
+  const box = document.querySelector('.info-box');
+  const loading = document.querySelector('.loading');
+  const big_box = document.querySelector('.box');
+  let startY = 0;
+  let moveY = 0;
+  let distance = 0;
+  let isRefresh = false;
+  let isTouch = false;
+
+  box.addEventListener('touchstart', function (e) {
+    startY = e.touches[0].clientY;
+    isTouch = true;
+  });
+
+  box.addEventListener('touchmove', function (e) {
+    if (!isTouch) return;
+    moveY = e.touches[0].clientY;
+    distance = moveY - startY;
+    if (distance > 0) {
+      isRefresh = true;
+      loading.innerHTML = '释放刷新';
+      big_box.style.transition = 'none';
+      big_box.style.transform = `translateY(${distance}px)`;
+    } else {
+      isRefresh = false;
+      loading.innerHTML = '下拉刷新';
+      big_box.style.transition = 'none';
+      big_box.style.transform = `translateY(${distance}px)`;
+    }
+  });
+
+  box.addEventListener('touchend', function (e) {
+    if (isRefresh) {
+      big_box.style.transition = 'transform 1s';
+      loading.innerHTML = '正在刷新';
+      location.reload();
+    } else {
+      big_box.style.transition = 'transform 1s';
+      big_box.style.transform = 'translateY(0)';
+    }
+    isTouch = false;
+  });
+
+  var map = new BMapGL.Map("container");          // 创建地图实例 
+  var point = new BMapGL.Point(116.404, 39.915);  // 创建点坐标 
+  map.centerAndZoom(point, 15);
+
+  // 更改视图大小
+  map.enableScrollWheelZoom(true);
+
+  var scaleCtrl = new BMapGL.ScaleControl();  // 添加比例尺控件
+  map.addControl(scaleCtrl);
+  var zoomCtrl = new BMapGL.ZoomControl();  // 添加缩放控件
+  map.addControl(zoomCtrl);
+  var cityCtrl = new BMapGL.CityListControl();  // 添加城市列表控件
+  map.addControl(cityCtrl);
+
+
+  // 变量
+  let marker = null;
+  let label = null;
+  let marker2 = null;
+  let marker3 = null;
+  let driving = new BMapGL.DrivingRoute(map, { renderOptions: { map: map, autoViewport: true } });
+
+  // 定位
+  var geolocation = new BMapGL.Geolocation();
+  geolocation.getCurrentPosition(function (r) {
+    if (this.getStatus() == BMAP_STATUS_SUCCESS) {
+      var mk = new BMapGL.Marker(r.point);
+      console.log(r);
+      map.addOverlay(mk);
+      map.addOverlay(
+        new BMapGL.Marker(new BMapGL.Point(r.point.lng, r.point.lat),
+          {
+            icon: new BMapGL.SVGSymbol(BMapGL.SymbolShapeType.BMap_Symbol_SHAPE_SMILE,
+              {
+                fillColor: 'red', fillOpacity: 0.6, scale: 3, anchor: new BMapGL.Size(0, 2)
+              })
+          }));
+      map.panTo(r.point);
+      const info_p = document.querySelector('.info-box p');
+      info_p.innerHTML = `我的位置：${r.address.city}${r.address.district}${r.address.street}`;
+
+      // 我的位置添加文本标注
+      var label = new BMapGL.Label(`我的位置：${r.address.city}${r.address.district}${r.address.street}`, { offset: new BMapGL.Size(20, -10) });
+      mk.setLabel(label);
+
+      // 搜索
+      // var circle = new BMapGL.Circle(r.point, 20000, { fillColor: "blue", strokeWeight: 1, fillOpacity: 0.3, strokeOpacity: 0.3 });
+      // map.addOverlay(circle);
+
+      var local = new BMapGL.LocalSearch(map, {
+        renderOptions: { map: map, panel: "my-panel", }
+      });
+      // 本地搜索，限定搜索范围为2000米
+      local.search(`${r.address.district}停车场`, { location: r.point, radius: 20000 });
+      // 获取停车位信息
+      local.setMarkersSetCallback(function (pois) {
+        // 每隔30s随机生成空车位数量
+        setInterval(function () {
+          for (var i = 0; i < pois.length; i++) {
+            pois[i].parking_num = Math.floor(Math.random() * 100);
+            var content = pois[i].title + "<br>" + '空车位：' + pois[i].parking_num;
+            pois[i].marker.setLabel(new BMapGL.Label(content, { offset: new BMapGL.Size(20, -10) }));
+          }
+        }(), 30000);
+        console.log(pois);
+
+        // 通过point和pois计算距离，获取最近的停车场
+        var min_distance = 100000000;
+        var min_index = 0;
+        for (var i = 0; i < pois.length; i++) {
+          var distance = map.getDistance(r.point, pois[i].point);
+          if (distance < min_distance) {
+            min_distance = distance;
+            min_index = i;
+          }
+        }
+        console.log('最近的停车场：', pois[min_index]);
+
+        // 为最近的停车场添加标注
+        map.removeOverlay(marker2);
+        marker2 = new BMapGL.Marker(
+          new BMapGL.Point(pois[min_index].point.lng, pois[min_index].point.lat), {
+          icon: new BMapGL.SVGSymbol(BMapGL.SymbolShapeType.BMap_Symbol_SHAPE_STAR,
+            {
+              fillColor: 'pink', fillOpacity: 0.6, scale: 4, anchor: new BMapGL.Size(0, 5)
+            })
+        });
+        map.addOverlay(marker2);
+
+
+        // 导航到最近的停车场
+        const nav_button = document.querySelectorAll('.info-box button')[1];
+        nav_button.addEventListener('click', function () {
+          // 清除所有导航
+          if (driving) {
+            driving.clearResults()
+          }
+          console.log(r.point, pois[min_index].point);
+
+
+          driving.search(r.point, pois[min_index].point);
+        });
+
+        // 清除导航
+        const clear_button = document.querySelectorAll('.info-box button')[2];
+        clear_button.addEventListener('click', function () {
+          if (driving) {
+            driving.clearResults()
+          }
+          map.addOverlay(
+            new BMapGL.Marker(new BMapGL.Point(r.point.lng, r.point.lat),
+              {
+                icon: new BMapGL.SVGSymbol(BMapGL.SymbolShapeType.BMap_Symbol_SHAPE_SMILE,
+                  {
+                    fillColor: 'red', fillOpacity: 0.6, scale: 3, anchor: new BMapGL.Size(0, 2)
+                  })
+              }));
+          map.addOverlay(mk);
+          mk.setLabel(label);
+          local.search(`${r.address.district}停车场`, { location: r.point, radius: 20000 });
+        });
+      });
+    }
+    else {
+      alert('failed' + this.getStatus());
+    }
+  });
+
+  // 查看车位按钮
+  const search_button = document.querySelector('.search_button');
+  search_button.addEventListener('click', function () {
+    // local.search("停车场");
+    const my_panel = document.querySelector('#my-panel');
+    my_panel.style.display = 'block';
+    const close = document.querySelector('.close');
+    close.style.display = 'block';
+    close.addEventListener('click', function () {
+      my_panel.style.display = 'none';
+      close.style.display = 'none';
+    });
+  });
+
+
+</script>
+
+</html>
